@@ -129,21 +129,23 @@ async def websocket_endpoint(websocket: WebSocket):
 
     try:
         while True:
-            # Wait for a message from the client. This message would be the user input to generate the response.
+            # Wait for a message from the client. 
             data = await websocket.receive_text()
             
-            # Use the provided message as the prompt.
-            prompt = data
+            # Parse the JSON string:
+            received_data = json.loads(data)
+            prompt = received_data["prompt"]
+            _MESSAGE = received_data["message"]
+            max_new_tokens = received_data["max_new_tokens"]
+
+            # Your generator logic can now use the above values instead of hardcoded values.
 
             # Start the generator logic
             t0 = time.time()
-            if prompt:
-                _MESSAGE = prompt
-            else:
-                _MESSAGE = "Default message if none provided"  # Change this if needed
-
+            
             generator.settings = ExLlamaGenerator.Settings()
             # ... [Rest of the settings from your code] ...
+            # Don't forget to set the max_new_tokens based on the received value.
             
             new_text = ""
             last_text = ""
@@ -152,7 +154,7 @@ async def websocket_endpoint(websocket: WebSocket):
             ids = tokenizer.encode(prompt)
             generator.gen_begin_reuse(ids)
             
-            for i in range(200):  # You can adjust the range as needed
+            for i in range(max_new_tokens):  
                 token = generator.gen_single_token()
                 text = tokenizer.decode(generator.sequence[0])
                 new_text = text[len(_MESSAGE):]
