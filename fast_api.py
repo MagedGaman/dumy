@@ -138,18 +138,16 @@ async def websocket_endpoint(websocket: WebSocket):
             _MESSAGE = received_data["message"]
             max_new_tokens = received_data["max_new_tokens"]
 
-            # Your generator logic can now use the above values instead of hardcoded values.
-
             # Start the generator logic
             t0 = time.time()
             
             generator.settings = ExLlamaGenerator.Settings()
             # ... [Rest of the settings from your code] ...
-            # Don't forget to set the max_new_tokens based on the received value.
             
             new_text = ""
             last_text = ""
             _full_answer = ""
+            buffered_text = ""
             generator.end_beam_search()
             ids = tokenizer.encode(prompt)
             generator.gen_begin_reuse(ids)
@@ -162,17 +160,23 @@ async def websocket_endpoint(websocket: WebSocket):
                 # Get new token by taking difference from last response:
                 new_token = new_text.replace(last_text, "")
                 last_text = new_text
+                buffered_text += new_token
 
-                # Send new token directly to the client over WebSocket:
-                await websocket.send_text(new_token)
+                # Send buffered text when we detect a complete sentence (e.g., end with "." or "?" or "!")
+                if buffered_text.endswith(('.', '?', '!')):
+                    await websocket.send_text(buffered_text)
+                    buffered_text = ""
 
                 if token.item() == tokenizer.eos_token_id:
                     break
 
+            if buffered_text:  # If there's still some leftover text, send it.
+                await websocket.send_text(buffered_text)
+
             generator.end_beam_search()
             _full_answer = new_text
 
-            # Provide some feedback. This can be adjusted based on your needs.
+            # Provide feedback separately.
             t1 = time.time()
             _sec = t1-t0
             prompt_tokens = tokenizer.encode(_MESSAGE)
@@ -182,7 +186,7 @@ async def websocket_endpoint(websocket: WebSocket):
             _tokens_sec = new_tokens/(_sec)
             
             feedback_message = f"Output generated in {_sec} ({_tokens_sec} tokens/s, {new_tokens}, context {prompt_tokens})"
-            await websocket.send_text(feedback_message)
+            await websocket.send_text(json.dumps({"status": "feedback", "message": feedback_message}))
 
     except WebSocketDisconnect:
         # Handle the disconnection and cleanup.
