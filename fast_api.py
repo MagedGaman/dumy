@@ -145,7 +145,8 @@ async def websocket_endpoint(websocket: WebSocket):
             generator.end_beam_search()
             ids = tokenizer.encode(prompt)
             generator.gen_begin_reuse(ids)
-
+            
+            first_iteration = True
             for i in range(max_new_tokens):
                 token = generator.gen_single_token()
                 text = tokenizer.decode(generator.sequence[0])
@@ -156,8 +157,11 @@ async def websocket_endpoint(websocket: WebSocket):
                 last_text = new_text
 
                 # Send new token directly to the client over WebSocket:
+    if not first_iteration:
                 response = {"status": "generating", "chunk": new_token}
                 await websocket.send_text(json.dumps(response))
+        if first_iteration:
+                first_iteration = False
 
                 if token.item() == tokenizer.eos_token_id:
                     break
