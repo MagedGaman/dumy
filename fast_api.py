@@ -61,7 +61,6 @@ else:
         sys.exit()
 #-------
 
-
 # Setup FastAPI:
 app = FastAPI()
 semaphore = asyncio.Semaphore(1)
@@ -124,40 +123,37 @@ async def websocket_endpoint(websocket: WebSocket):
     try:
         while True:
             data = await websocket.receive_text()
-            # Start processing in a background task
-            asyncio.create_task(handle_ws_message(websocket, data))
+            received_data = json.loads(data)
+            prompt = received_data["prompt"]
+            max_new_tokens = received_data["max_new_tokens"]
+            
+            generator.settings = ExLlamaGenerator.Settings()
+
+            generator.end_beam_search()
+            ids = tokenizer.encode(prompt)
+            generator.gen_begin_reuse(ids)
+            
+            new_text = ""
+            last_text = ""
+
+            for i in range(max_new_tokens):
+                token = generator.gen_single_token()
+                text = tokenizer.decode(generator.sequence[0])
+                new_text = text[len(prompt):]
+
+                new_token = new_text.replace(last_text, "")
+                last_text = new_text
+
+                await websocket.send_text(json.dumps({"status": "generating", "chunk": new_token}))
+
+                if token.item() == tokenizer.eos_token_id:
+                    break
+
+            generator.end_beam_search()
+            await websocket.send_text(json.dumps({"status": "done", "chunk": new_text}))
+
     except WebSocketDisconnect:
         del connected_clients[client_id]
-
-async def handle_ws_message(websocket: WebSocket, data: str):
-    received_data = json.loads(data)
-    prompt = received_data["prompt"]
-    max_new_tokens = received_data["max_new_tokens"]
-    
-    generator.settings = ExLlamaGenerator.Settings()
-
-    generator.end_beam_search()
-    ids = tokenizer.encode(prompt)
-    generator.gen_begin_reuse(ids)
-    
-    new_text = ""
-    last_text = ""
-
-    for i in range(max_new_tokens):
-        token = generator.gen_single_token()
-        text = tokenizer.decode(generator.sequence[0])
-        new_text = text[len(prompt):]
-
-        new_token = new_text.replace(last_text, "")
-        last_text = new_text
-
-        await websocket.send_text(json.dumps({"status": "generating", "chunk": new_token}))
-
-        if token.item() == tokenizer.eos_token_id:
-            break
-
-    generator.end_beam_search()
-    await websocket.send_text(json.dumps({"status": "done", "chunk": new_text}))
 
 @app.post("/generate")
 async def stream_data(req: GenerateRequest):
