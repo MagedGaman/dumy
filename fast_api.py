@@ -118,89 +118,43 @@ connected_clients = {}
 async def websocket_endpoint(websocket: WebSocket):
     # Unique identifier for each client
     client_id = id(websocket)
-    # Accept the websocket connection.
     await websocket.accept()
-
-    # Store the websocket client
     connected_clients[client_id] = websocket
 
     try:
         while True:
-            # Wait for a message from the client.
             data = await websocket.receive_text()
-
-            # Parse the JSON string:
             received_data = json.loads(data)
             prompt = received_data["prompt"]
             max_new_tokens = received_data["max_new_tokens"]
-
-            # Start the generator logic
-            t0 = time.time()
-
+            
             generator.settings = ExLlamaGenerator.Settings()
 
-            generator.settings.temperature = received_data.get("temperature", 1.0)  # default to 1.0 if not provided
-
-            generator.settings.top_k = received_data.get("top_k", 0)  # default value
-
-            generator.settings.top_p = received_data.get("top_p", 0.9)  # default value
-
-            generator.settings.min_p = received_data.get("min_p", 0.0)  # default value
-
-            generator.settings.token_repetition_penalty_max = received_data.get("token_repetition_penalty_max", 0.0)  # default value
-
-            generator.settings.token_repetition_penalty_sustain = received_data.get("token_repetition_penalty_sustain", 0.0)  # default value
-
-            decay = received_data.get("token_repetition_penalty_decay", received_data.get("token_repetition_penalty_sustain", 0.0) / 2)
-            generator.settings.token_repetition_penalty_decay = int(decay)
-            
-            new_text = ""
-            last_text = ""
-            _full_answer = ""
             generator.end_beam_search()
             ids = tokenizer.encode(prompt)
             generator.gen_begin_reuse(ids)
             
+            new_text = ""
+            last_text = ""
+
             for i in range(max_new_tokens):
                 token = generator.gen_single_token()
                 text = tokenizer.decode(generator.sequence[0])
-                new_text = text
+                new_text = text[len(prompt):]
 
-                # Get new token by taking difference from last response:
                 new_token = new_text.replace(last_text, "")
                 last_text = new_text
 
-                # Send new token directly to the client over WebSocket:
-                response = {"status": "generating", "chunk": new_token}
-                await websocket.send_text(json.dumps(response))
+                await websocket.send_text(json.dumps({"status": "generating", "chunk": new_token}))
 
                 if token.item() == tokenizer.eos_token_id:
                     break
 
             generator.end_beam_search()
-            _full_answer = new_text
-
-            # Provide some feedback. This can be adjusted based on your needs.
-            t1 = time.time()
-            _sec = t1-t0
-            prompt_tokens = tokenizer.encode(prompt)
-            prompt_tokens = len(prompt_tokens[0])
-            new_tokens = tokenizer.encode(_full_answer)
-            new_tokens = len(new_tokens[0])
-            _tokens_sec = new_tokens/(_sec)
-
-            feedback_message = f"Output generated in {_sec} ({_tokens_sec} tokens/s, {new_tokens}, context {prompt_tokens})"
-            # await websocket.send_text(feedback_message)
-
-            # Indicate that generation is done
-            response = {"status": "done", "chunk": ""}
-            await websocket.send_text(json.dumps(response))
+            await websocket.send_text(json.dumps({"status": "done", "chunk": new_text}))
 
     except WebSocketDisconnect:
-        # Handle the disconnection and cleanup.
         del connected_clients[client_id]
-
-
 
 @app.post("/generate")
 async def stream_data(req: GenerateRequest):
