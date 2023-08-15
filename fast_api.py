@@ -176,7 +176,7 @@ async def websocket_endpoint(websocket: WebSocket):
             _tokens_sec = new_tokens/(_sec)
 
             feedback_message = f"Output generated in {_sec} ({_tokens_sec} tokens/s, {new_tokens}, context {prompt_tokens})"
-            await websocket.send_text(feedback_message)
+           # await websocket.send_text(feedback_message)
 
     except WebSocketDisconnect:
         # Handle the disconnection and cleanup.
