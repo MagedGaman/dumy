@@ -134,7 +134,6 @@ async def websocket_endpoint(websocket: WebSocket):
             ids = tokenizer.encode(prompt)
             generator.gen_begin_reuse(ids)
             
-            new_text = ""
             last_text = ""
 
             for i in range(max_new_tokens):
