@@ -113,6 +113,7 @@ class GenerateRequest(BaseModel):
     #break_on_newline: Optional[str] = None
 
 connected_clients = {}
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     # Unique identifier for each client
@@ -131,10 +132,7 @@ async def websocket_endpoint(websocket: WebSocket):
             # Parse the JSON string:
             received_data = json.loads(data)
             prompt = received_data["prompt"]
-            _MESSAGE = received_data["message"]
             max_new_tokens = received_data["max_new_tokens"]
-
-            # Your generator logic can now use the above values instead of hardcoded values.
 
             # Start the generator logic
             t0 = time.time()
@@ -151,7 +149,7 @@ async def websocket_endpoint(websocket: WebSocket):
             for i in range(max_new_tokens):
                 token = generator.gen_single_token()
                 text = tokenizer.decode(generator.sequence[0])
-                new_text = text[len(_MESSAGE):]
+                new_text = text
 
                 # Get new token by taking difference from last response:
                 new_token = new_text.replace(last_text, "")
@@ -169,7 +167,7 @@ async def websocket_endpoint(websocket: WebSocket):
             # Provide some feedback. This can be adjusted based on your needs.
             t1 = time.time()
             _sec = t1-t0
-            prompt_tokens = tokenizer.encode(_MESSAGE)
+            prompt_tokens = tokenizer.encode(prompt)
             prompt_tokens = len(prompt_tokens[0])
             new_tokens = tokenizer.encode(_full_answer)
             new_tokens = len(new_tokens[0])
@@ -181,6 +179,7 @@ async def websocket_endpoint(websocket: WebSocket):
     except WebSocketDisconnect:
         # Handle the disconnection and cleanup.
         del connected_clients[client_id]
+
 
 @app.post("/generate")
 async def stream_data(req: GenerateRequest):
