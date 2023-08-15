@@ -181,7 +181,7 @@ async def websocket_endpoint(websocket: WebSocket):
             _tokens_sec = new_tokens / _sec
 
             # Indicate that generation is done
-            response = {"status": "done", "chunk": ""}
+            response = {"status": "done", "chunk": _full_answer}
             await websocket.send_text(json.dumps(response))
 
     except WebSocketDisconnect:
