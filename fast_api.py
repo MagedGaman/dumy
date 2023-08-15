@@ -139,6 +139,21 @@ async def websocket_endpoint(websocket: WebSocket):
 
             generator.settings = ExLlamaGenerator.Settings()
 
+            generator.settings.temperature = received_data.get("temperature", 1.0)  # default to 1.0 if not provided
+
+            generator.settings.top_k = received_data.get("top_k", 0)  # default value
+
+            generator.settings.top_p = received_data.get("top_p", 0.9)  # default value
+
+            generator.settings.min_p = received_data.get("min_p", 0.0)  # default value
+
+            generator.settings.token_repetition_penalty_max = received_data.get("token_repetition_penalty_max", 0.0)  # default value
+
+            generator.settings.token_repetition_penalty_sustain = received_data.get("token_repetition_penalty_sustain", 0.0)  # default value
+
+            decay = received_data.get("token_repetition_penalty_decay", received_data.get("token_repetition_penalty_sustain", 0.0) / 2)
+            generator.settings.token_repetition_penalty_decay = int(decay)
+            
             new_text = ""
             last_text = ""
             _full_answer = ""
@@ -146,7 +161,6 @@ async def websocket_endpoint(websocket: WebSocket):
             ids = tokenizer.encode(prompt)
             generator.gen_begin_reuse(ids)
             
-            first_iteration = True
             for i in range(max_new_tokens):
                 token = generator.gen_single_token()
                 text = tokenizer.decode(generator.sequence[0])
@@ -157,11 +171,8 @@ async def websocket_endpoint(websocket: WebSocket):
                 last_text = new_text
 
                 # Send new token directly to the client over WebSocket:
-    if not first_iteration:
                 response = {"status": "generating", "chunk": new_token}
                 await websocket.send_text(json.dumps(response))
-        if first_iteration:
-                first_iteration = False
 
                 if token.item() == tokenizer.eos_token_id:
                     break
