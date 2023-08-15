@@ -156,7 +156,8 @@ async def websocket_endpoint(websocket: WebSocket):
                 last_text = new_text
 
                 # Send new token directly to the client over WebSocket:
-                await websocket.send_text(new_token)
+                response = {"status": "generating", "chunk": new_token}
+                await websocket.send_text(json.dumps(response))
 
                 if token.item() == tokenizer.eos_token_id:
                     break
@@ -174,11 +175,16 @@ async def websocket_endpoint(websocket: WebSocket):
             _tokens_sec = new_tokens/(_sec)
 
             feedback_message = f"Output generated in {_sec} ({_tokens_sec} tokens/s, {new_tokens}, context {prompt_tokens})"
-           # await websocket.send_text(feedback_message)
+            # await websocket.send_text(feedback_message)
+
+            # Indicate that generation is done
+            response = {"status": "done", "chunk": ""}
+            await websocket.send_text(json.dumps(response))
 
     except WebSocketDisconnect:
         # Handle the disconnection and cleanup.
         del connected_clients[client_id]
+
 
 
 @app.post("/generate")
