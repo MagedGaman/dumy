@@ -127,22 +127,18 @@ async def websocket_endpoint(websocket: WebSocket):
             received_data = json.loads(data)
             prompt = received_data["prompt"]
             max_new_tokens = received_data["max_new_tokens"]
-            
+
             generator.settings = ExLlamaGenerator.Settings()
 
             generator.end_beam_search()
             ids = tokenizer.encode(prompt)
             generator.gen_begin_reuse(ids)
-            
-            last_text = ""
 
             for i in range(max_new_tokens):
                 token = generator.gen_single_token()
-                text = tokenizer.decode(generator.sequence[0])
-                new_text = text[len(prompt):]
 
-                new_token = new_text.replace(last_text, "")
-                last_text = new_text
+                # Decode only the new token:
+                new_token = tokenizer.decode([token.item()])
 
                 await websocket.send_text(json.dumps({"status": "generating", "chunk": new_token}))
 
@@ -150,7 +146,6 @@ async def websocket_endpoint(websocket: WebSocket):
                     break
 
             generator.end_beam_search()
-            await websocket.send_text(json.dumps({"status": "done", "chunk": new_text}))
 
     except WebSocketDisconnect:
         del connected_clients[client_id]
