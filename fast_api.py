@@ -13,7 +13,7 @@ from typing import Any, Dict, Optional, List
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, WebSocket
 # exllama imports:
 from model import ExLlama, ExLlamaCache, ExLlamaConfig
 from tokenizer import ExLlamaTokenizer
@@ -22,8 +22,6 @@ import argparse
 import torch
 import sys
 import os
-
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 
 # [init torch]:
 torch.set_grad_enabled(False)
@@ -89,6 +87,21 @@ async def chat(request: Request, q: Union[str, None] = None):
 async def chat(request: Request, q: Union[str, None] = None):
     return templates.TemplateResponse("fastapi_chat.html", {"request": request, "host": socket.gethostname(), "port": _PORT})
 
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    await websocket.accept()
+    while True:
+        req = await websocket.receive_text()
+
+        # Convert the received text into the appropriate format or object.
+        # For instance, if you're receiving JSON, you might do:
+        generate_request = GenerateRequest(**json.loads(req))
+
+        # Now, use the logic from the `/stream_data` endpoint to generate the response.
+        # This might involve calling a function like `generate_simple()` or something similar.
+
+        response_text = await generate_simple(generate_request.prompt, generate_request.max_new_tokens)
+        await websocket.send_text(response_text)
 
 # fastapi_chat.html uses this to check what model is being used.
 # (My Webserver uses this to check if my LLM is running):
@@ -115,77 +128,6 @@ class GenerateRequest(BaseModel):
     # options:
     #break_on_newline: Optional[str] = None
 
-connected_clients = {}
-
-@app.websocket("/ws_generate")
-async def websocket_endpoint(websocket: WebSocket):
-    # Unique identifier for each client
-    client_id = id(websocket)
-    # Accept the websocket connection.
-    await websocket.accept()
-    
-    # Store the websocket client
-    connected_clients[client_id] = websocket
-
-    try:
-        while True:
-            # Wait for a message from the client. This message would be the user input to generate the response.
-            data = await websocket.receive_text()
-            
-            # Use the provided message as the prompt.
-            prompt = data
-
-            # Start the generator logic
-            t0 = time.time()
-            if prompt:
-                _MESSAGE = prompt
-            else:
-                _MESSAGE = "Default message if none provided"  # Change this if needed
-
-            generator.settings = ExLlamaGenerator.Settings()
-            # ... [Rest of the settings from your code] ...
-            
-            new_text = ""
-            last_text = ""
-            _full_answer = ""
-            generator.end_beam_search()
-            ids = tokenizer.encode(prompt)
-            generator.gen_begin_reuse(ids)
-            
-            for i in range(200):  # You can adjust the range as needed
-                token = generator.gen_single_token()
-                text = tokenizer.decode(generator.sequence[0])
-                new_text = text[len(_MESSAGE):]
-
-                # Get new token by taking difference from last response:
-                new_token = new_text.replace(last_text, "")
-                last_text = new_text
-
-                # Send new token directly to the client over WebSocket:
-                await websocket.send_text(new_token)
-
-                if token.item() == tokenizer.eos_token_id:
-                    break
-
-            generator.end_beam_search()
-            _full_answer = new_text
-
-            # Provide some feedback. This can be adjusted based on your needs.
-            t1 = time.time()
-            _sec = t1-t0
-            prompt_tokens = tokenizer.encode(_MESSAGE)
-            prompt_tokens = len(prompt_tokens[0])
-            new_tokens = tokenizer.encode(_full_answer)
-            new_tokens = len(new_tokens[0])
-            _tokens_sec = new_tokens/(_sec)
-            
-            feedback_message = f"Output generated in {_sec} ({_tokens_sec} tokens/s, {new_tokens}, context {prompt_tokens})"
-            await websocket.send_text(feedback_message)
-
-    except WebSocketDisconnect:
-        # Handle the disconnection and cleanup.
-        del connected_clients[client_id]
-        await websocket.close()
 
 @app.post("/generate")
 async def stream_data(req: GenerateRequest):
